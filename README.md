@@ -12,4 +12,4 @@ A polite Python script that organizes JSON, XML, or Text files with colors and e
 1. Make sure you have Python installed.
 2. Run the script:
 
-```    python magic_organizer.py     ```
+```    python magic_organizer.py  | lolcat   ```
