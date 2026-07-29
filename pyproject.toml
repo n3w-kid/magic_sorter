@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "magic-sorter-x"
+version = "0.1.0"
+description = "An fx-inspired terminal data viewer, translator-to-English, and emoji file organizer."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "Magic Sorter X contributors"}]
+dependencies = [
+  "rich>=13.9,<15",
+  "PyYAML>=6.0,<7",
+  "tomli-w>=1.1,<2",
+]
+
+[project.optional-dependencies]
+translate = ["deep-translator>=1.11,<2"]
+dev = ["pytest>=8.0,<9", "ruff>=0.9,<1"]
+
+[project.scripts]
+msx = "magic_sorter_x.cli:main"
+magic-sorter-x = "magic_sorter_x.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
