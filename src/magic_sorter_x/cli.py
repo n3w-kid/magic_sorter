@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
 from typing import Any
-
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
 
 from . import __version__
 from .emojify import apply_plans, plan_emojify
@@ -18,14 +15,8 @@ from .organize import apply_organize, plan_organize
 from .parsers import load_document, parse_text
 from .render import render_document, render_summary
 from .serialize import serialize
-from .translation import (
-    TranslationError,
-    select_translator,
-    translate_value,
-    translate_xml_value,
-)
-
-console = Console()
+from .terminal import paint, print_panel, print_table
+from .translation import TranslationError, select_translator, translate_value, translate_xml_value
 
 
 def read_document(path: str | None) -> Document:
@@ -35,13 +26,8 @@ def read_document(path: str | None) -> Document:
 
 
 def print_plans(plans: list[RenamePlan], title: str) -> None:
-    table = Table(title=title, show_lines=False)
-    table.add_column("From", style="cyan", overflow="fold")
-    table.add_column("To", style="green", overflow="fold")
-    table.add_column("Why", style="magenta")
-    for plan in plans:
-        table.add_row(str(plan.source), str(plan.destination), plan.reason)
-    console.print(table)
+    rows = [(plan.source, plan.destination, plan.reason) for plan in plans]
+    print_table(["From", "To", "Why"], rows, title)
 
 
 def command_view(args: argparse.Namespace) -> int:
@@ -52,7 +38,7 @@ def command_view(args: argparse.Namespace) -> int:
             run_tui(document)
             return 0
         except Exception as exc:
-            console.print(f"[yellow]TUI unavailable ({exc}); using rich preview.[/]")
+            print(paint(f"TUI unavailable ({exc}); using normal preview.", "yellow"))
     render_document(document)
     if args.summary:
         render_summary(document)
@@ -63,41 +49,38 @@ def command_translate(args: argparse.Namespace) -> int:
     document = read_document(args.path)
     try:
         translator = select_translator(args.backend)
-        console.print(f"[dim]🌐 Translation backend: {translator.name}[/]")
-        translate_keys = args.keys
+        print(paint(f"🌐 Translation backend: {translator.name}", "dim"))
         if document.kind == "xml":
-            if translate_keys:
-                console.print(
-                    "[yellow]XML element and attribute names are kept unchanged; "
-                    "translating text nodes only.[/]"
-                )
+            if args.keys:
+                print(paint("XML element and attribute names stay unchanged; only text nodes are translated.", "yellow"))
             translated = translate_xml_value(document.data, translator)
         else:
-            translated = translate_value(document.data, translator, translate_keys)
+            translated = translate_value(document.data, translator, args.keys)
     except TranslationError as exc:
-        console.print(Panel(str(exc), title="❌ Translation unavailable", border_style="red"))
+        print_panel(str(exc), "❌ Translation unavailable")
         return 2
     output = serialize(document.kind, translated)
     if args.output:
         destination = Path(args.output).expanduser()
+        destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(output, encoding="utf-8")
-        console.print(f"[green]✅ Wrote English translation to {destination}[/]")
+        print(paint(f"✅ Wrote English translation to {destination}", "green"))
     else:
-        console.print(output, markup=False)
+        print(output, end="" if output.endswith("\n") else "\n")
     return 0
 
 
 def command_emojify(args: argparse.Namespace) -> int:
-    plans = plan_emojify([Path(p).expanduser() for p in args.paths], args.recursive)
+    plans = plan_emojify([Path(path).expanduser() for path in args.paths], args.recursive)
     if not plans:
-        console.print("[green]✅ Nothing to rename.[/]")
+        print(paint("✅ Nothing to rename.", "green"))
         return 0
     print_plans(plans, "✨ Emoji rename plan")
     if not args.apply:
-        console.print("[yellow]Dry run only. Add --apply to rename files.[/]")
+        print(paint("Dry run only. Use --apply when you want to rename the files.", "yellow"))
         return 0
     apply_plans(plans)
-    console.print(f"[green]✅ Renamed {len(plans)} file(s).[/]")
+    print(paint(f"✅ Renamed {len(plans)} file(s).", "green"))
     return 0
 
 
@@ -105,41 +88,57 @@ def command_organize(args: argparse.Namespace) -> int:
     directory = Path(args.directory).expanduser().resolve()
     plans = plan_organize(directory, not args.no_emoji)
     if not plans:
-        console.print("[green]✅ No loose files to organize.[/]")
+        print(paint("✅ No loose files to organize.", "green"))
         return 0
     print_plans(plans, "🧹 Organization plan")
     if not args.apply:
-        console.print("[yellow]Dry run only. Add --apply to move/copy files.[/]")
+        print(paint("Dry run only. Use --apply when you want to move or copy the files.", "yellow"))
         return 0
     apply_organize(plans, args.copy)
-    console.print(f"[green]✅ Organized {len(plans)} file(s).[/]")
+    print(paint(f"✅ Organized {len(plans)} file(s).", "green"))
     return 0
 
 
 def command_doctor(_: argparse.Namespace) -> int:
     checks: dict[str, Any] = {
         "Python": sys.version.split()[0],
-        "Translate Shell (`trans`)": shutil.which("trans") or "not found",
+        "Project mode": "direct run",
+        "Translate Shell (trans)": shutil.which("trans") or "not found",
+        "LibreTranslate URL": os.getenv("LIBRETRANSLATE_URL") or "not configured",
         "Interactive terminal": sys.stdout.isatty(),
     }
     try:
-        import deep_translator  # noqa: F401
-        checks["deep-translator"] = "installed"
+        import deep_translator
+        checks["deep-translator"] = "available" if deep_translator else "not available"
     except ImportError:
-        checks["deep-translator"] = "not installed"
-    console.print(Panel(json.dumps(checks, indent=2), title="🩺 Magic Sorter X doctor"))
+        checks["deep-translator"] = "not available"
+    print_panel(json.dumps(checks, indent=2), "🩺 Magic Sorter X doctor")
     return 0
+
+
+def command_wizard(_: argparse.Namespace | None = None) -> int:
+    from .wizard import run_wizard
+    return run_wizard(
+        {
+            "view": command_view,
+            "translate": command_translate,
+            "emojify": command_emojify,
+            "organize": command_organize,
+            "doctor": command_doctor,
+        }
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="msx",
-        description="✨ View, translate, emojify, and organize files in the terminal.",
+        description="✨ View, translate, emojify, and organize files from one command.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("-w", "--wizard", action="store_true", help="open the guided wizard")
+    sub = parser.add_subparsers(dest="command")
 
-    view = sub.add_parser("view", help="fx-like structured-data viewer")
+    view = sub.add_parser("view", help="open the structured-data viewer")
     view.add_argument("path", nargs="?", help="file path, or read stdin")
     view.add_argument("--tui", action=argparse.BooleanOptionalAction, default=True)
     view.add_argument("--summary", action="store_true")
@@ -165,17 +164,29 @@ def build_parser() -> argparse.ArgumentParser:
     organize.add_argument("--no-emoji", action="store_true", help="keep original filenames")
     organize.set_defaults(func=command_organize)
 
-    doctor = sub.add_parser("doctor", help="show optional-backend status")
+    doctor = sub.add_parser("doctor", help="show translation and terminal status")
     doctor.set_defaults(func=command_doctor)
+
+    wizard = sub.add_parser("wizard", help="open the guided wizard")
+    wizard.set_defaults(func=command_wizard)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        return int(args.func(args))
+        if args.wizard:
+            return command_wizard(args)
+        if hasattr(args, "func"):
+            return int(args.func(args))
+        if sys.stdin.isatty():
+            return command_wizard(args)
+        return command_view(argparse.Namespace(path=None, tui=False, summary=False))
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled.")
+        return 130
     except (OSError, RuntimeError, ValueError) as exc:
-        console.print(Panel(str(exc), title="❌ Error", border_style="red"))
+        print_panel(str(exc), "❌ Error")
         return 1
 
 

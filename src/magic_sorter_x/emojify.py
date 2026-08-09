@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .models import RenamePlan
 
+
 EMOJI_BY_EXTENSION = {
     ".json": "🧩", ".jsonl": "🧩", ".ndjson": "🧩", ".xml": "📰", ".svg": "🎨",
     ".yaml": "⚙️", ".yml": "⚙️", ".toml": "⚙️", ".ini": "⚙️", ".cfg": "⚙️",

@@ -6,6 +6,7 @@ from pathlib import Path
 from .emojify import emoji_for, emojified_name
 from .models import RenamePlan
 
+
 CATEGORY_BY_EXTENSION = {
     "data": {".json", ".jsonl", ".ndjson", ".xml", ".yaml", ".yml", ".toml", ".csv", ".tsv", ".sql"},
     "documents": {".txt", ".md", ".pdf", ".doc", ".docx", ".odt"},

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-import curses
 import json
 from dataclasses import dataclass
 from typing import Any, Iterable
 
 from .models import Document
+
+try:
+    import curses
+except ImportError:
+    curses = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -55,12 +59,7 @@ def matches(node: Node, query: str) -> bool:
     return query.casefold() in haystack
 
 
-def visible_nodes(
-    value: Any,
-    expanded: set[tuple[str | int, ...]],
-    query: str = "",
-) -> list[Node]:
-    """Build the visible tree, retaining ancestors of search matches."""
+def visible_nodes(value: Any, expanded: set[tuple[str | int, ...]], query: str = "") -> list[Node]:
     output: list[Node] = []
 
     def walk(current: Any, path: tuple[str | int, ...], depth: int, label: str) -> bool:
@@ -102,6 +101,8 @@ def format_path(path: tuple[str | int, ...]) -> str:
 
 class CursesViewer:
     def __init__(self, document: Document) -> None:
+        if curses is None:
+            raise RuntimeError("Full-screen TUI is not available in this Python build")
         self.document = document
         self.expanded: set[tuple[str | int, ...]] = {()}
         self.query = ""
@@ -132,9 +133,9 @@ class CursesViewer:
                 self.index = min(len(nodes) - 1, self.index + 1)
             elif key in (curses.KEY_UP, ord("k")):
                 self.index = max(0, self.index - 1)
-            elif key in (curses.KEY_NPAGE,):
+            elif key == curses.KEY_NPAGE:
                 self.index = min(len(nodes) - 1, self.index + max(1, screen.getmaxyx()[0] - 5))
-            elif key in (curses.KEY_PPAGE,):
+            elif key == curses.KEY_PPAGE:
                 self.index = max(0, self.index - max(1, screen.getmaxyx()[0] - 5))
             elif key in (10, 13, ord(" "), curses.KEY_RIGHT, ord("l")):
                 node = nodes[self.index]
@@ -186,17 +187,12 @@ class CursesViewer:
         source = self.document.source.name if self.document.source else "stdin"
         header = f"✨ Magic Sorter X · {self.document.kind.upper()} · {source}"
         screen.addnstr(0, 0, header, max(0, width - 1), curses.A_BOLD)
-        if self.query:
-            screen.addnstr(1, 0, f"🔎 {self.query}", max(0, width - 1), curses.A_BOLD)
-        else:
-            screen.addnstr(1, 0, self.message, max(0, width - 1))
-
+        screen.addnstr(1, 0, f"🔎 {self.query}" if self.query else self.message, max(0, width - 1), curses.A_BOLD if self.query else curses.A_NORMAL)
         body_height = max(1, height - 4)
         if self.index < self.offset:
             self.offset = self.index
         elif self.index >= self.offset + body_height:
             self.offset = self.index - body_height + 1
-
         for row, node in enumerate(nodes[self.offset:self.offset + body_height], start=2):
             absolute = self.offset + row - 2
             marker = "▼" if node.container and node.path in self.expanded else "▶" if node.container else "•"
@@ -207,7 +203,6 @@ class CursesViewer:
                 screen.addnstr(row, 0, line, max(0, width - 1), attr)
             except curses.error:
                 pass
-
         selected = nodes[self.index]
         footer = f"{format_path(selected.path)} · {self.index + 1}/{len(nodes)}"
         try:

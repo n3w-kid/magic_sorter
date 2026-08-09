@@ -48,7 +48,7 @@ class DeepTranslator:
         try:
             from deep_translator import GoogleTranslator
         except ImportError as exc:
-            raise TranslationError("deep-translator is not installed") from exc
+            raise TranslationError("deep-translator is not available on this system") from exc
         result = GoogleTranslator(source="auto", target="en").translate(text)
         if not result:
             raise TranslationError("deep-translator returned an empty result")
@@ -74,7 +74,7 @@ class LibreTranslateTranslator:
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 body = json.loads(response.read().decode("utf-8"))
-        except Exception as exc:  # network error details vary by platform
+        except Exception as exc:
             raise TranslationError(f"LibreTranslate request failed: {exc}") from exc
         result = body.get("translatedText")
         if not result:
@@ -84,21 +84,23 @@ class LibreTranslateTranslator:
 
 def select_translator(preferred: str = "auto") -> Translator:
     preferred = preferred.lower()
-    if preferred in {"auto", "trans", "translate-shell"} and shutil.which("trans"):
-        return TranslateShellTranslator(shutil.which("trans") or "trans")
+    trans = shutil.which("trans")
+    if preferred in {"auto", "trans", "translate-shell"} and trans:
+        return TranslateShellTranslator(trans)
     if preferred in {"auto", "deep", "deep-translator"}:
         try:
-            import deep_translator  # noqa: F401
-            return DeepTranslator()
+            import deep_translator
+            if deep_translator:
+                return DeepTranslator()
         except ImportError:
             if preferred != "auto":
-                raise TranslationError("Install with: pip install 'magic-sorter-x[translate]'")
+                raise TranslationError("deep-translator is not available on this system")
     endpoint = os.getenv("LIBRETRANSLATE_URL")
     if preferred in {"auto", "libre", "libretranslate"} and endpoint:
         return LibreTranslateTranslator(endpoint, os.getenv("LIBRETRANSLATE_API_KEY"))
     raise TranslationError(
-        "No translation backend found. Install Translate Shell (`trans`), install the "
-        "translate extra, or set LIBRETRANSLATE_URL."
+        "No translation backend is available. Use Translate Shell, an existing deep-translator setup, "
+        "or set LIBRETRANSLATE_URL."
     )
 
 
@@ -108,10 +110,8 @@ def _should_translate(text: str) -> bool:
 
 
 def translate_text(text: str, translator: Translator, max_chars: int = 3500) -> str:
-    """Translate text in backend-friendly chunks while preserving paragraph breaks."""
     if len(text) <= max_chars:
         return translator.translate(text)
-
     chunks: list[str] = []
     current: list[str] = []
     current_length = 0
@@ -126,7 +126,7 @@ def translate_text(text: str, translator: Translator, max_chars: int = 3500) -> 
                 chunks.append("\n".join(current))
                 current = []
                 current_length = 0
-            chunks.extend(paragraph[i:i + max_chars] for i in range(0, len(paragraph), max_chars))
+            chunks.extend(paragraph[index:index + max_chars] for index in range(0, len(paragraph), max_chars))
         else:
             current.append(paragraph)
             current_length += addition
@@ -168,9 +168,7 @@ def translate_xml_value(
     translator: Translator,
     _cache: dict[str, str] | None = None,
 ) -> Any:
-    """Translate XML text nodes while preserving element names and attributes."""
     cache = {} if _cache is None else _cache
-
     if isinstance(value, str):
         if not _should_translate(value):
             return value

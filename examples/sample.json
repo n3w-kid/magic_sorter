@@ -1,7 +1,7 @@
 {
   // relaxed JSON is accepted
   "project": "Magic Sorter X",
-  "features": ["viewer", "translation", "emoji filenames"],
-  "stats": {"cool": true, "version": 1,},
+  "features": ["viewer", "translation", "emoji filenames", "wizard"],
+  "stats": {"cool": true, "version": 2,},
   "hello": "Bonjour tout le monde"
 }

@@ -7,15 +7,16 @@ import re
 import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .models import Document
+from .yaml_codec import loads as yaml_loads
+
 
 _JSON_TRAILING_COMMA = re.compile(r",\s*([}\]])")
 
 
 def _strip_json_comments(text: str) -> str:
-    """Remove // and /* */ comments without touching comment markers in strings."""
     output: list[str] = []
     index = 0
     in_string = False
@@ -55,25 +56,21 @@ def _strip_json_comments(text: str) -> str:
 
 
 def _relaxed_json(text: str) -> Any:
-    """Parse JSON while tolerating comments and trailing commas."""
     cleaned = _strip_json_comments(text)
     cleaned = _JSON_TRAILING_COMMA.sub(r"\1", cleaned)
     return json.loads(cleaned)
 
 
 def _xml_value(element: ET.Element) -> Any:
-    """Convert one XML element to a JSON-like value without duplicating its tag."""
     node: dict[str, Any] = {}
     if element.attrib:
         node["@attributes"] = dict(element.attrib)
-
     text = (element.text or "").strip()
     children: dict[str, list[Any]] = {}
     for child in element:
         children.setdefault(child.tag, []).append(_xml_value(child))
     for tag, values in children.items():
         node[tag] = values[0] if len(values) == 1 else values
-
     if node:
         if text:
             node["#text"] = text
@@ -94,34 +91,33 @@ def _parse_csv(text: str) -> list[dict[str, str]]:
     return list(reader)
 
 
+def _parse_yaml(text: str) -> Any:
+    try:
+        import yaml
+    except ImportError:
+        return yaml_loads(text)
+    return yaml.safe_load(text)
+
+
 def parse_text(text: str, source: Path | None = None) -> Document:
     stripped = text.lstrip("\ufeff").strip()
     if not stripped:
         return Document(source, "text", "", text)
-
     suffix = source.suffix.lower() if source else ""
-    attempts: list[tuple[str, Any]] = []
-
+    attempts: list[tuple[str, Callable[[], Any]]] = []
     if suffix in {".json", ".jsonc", ".jsonl", ".ndjson"} or stripped[:1] in "[{":
         if suffix in {".jsonl", ".ndjson"}:
             attempts.append(("jsonl", lambda: [_relaxed_json(line) for line in stripped.splitlines() if line.strip()]))
         attempts.append(("json", lambda: _relaxed_json(stripped)))
-
     if suffix == ".toml":
         attempts.append(("toml", lambda: tomllib.loads(stripped)))
-
     if suffix in {".xml", ".svg"} or stripped.startswith("<"):
         attempts.append(("xml", lambda: _xml_to_data(ET.fromstring(stripped))))
-
     if suffix in {".yaml", ".yml"} or ":" in stripped:
-        def parse_yaml() -> Any:
-            import yaml  # optional at import time
-            return yaml.safe_load(stripped)
-        attempts.append(("yaml", parse_yaml))
-
-    if suffix in {".csv", ".tsv"} or any(d in stripped.splitlines()[0] for d in [",", ";", "\t", "|"]):
+        attempts.append(("yaml", lambda: _parse_yaml(stripped)))
+    first_line = stripped.splitlines()[0]
+    if suffix in {".csv", ".tsv"} or any(delimiter in first_line for delimiter in [",", ";", "\t", "|"]):
         attempts.append(("csv", lambda: _parse_csv(stripped)))
-
     seen: set[str] = set()
     for kind, parser in attempts:
         if kind in seen:
@@ -131,12 +127,8 @@ def parse_text(text: str, source: Path | None = None) -> Document:
             value = parser()
             if value is not None:
                 return Document(source, kind, value, text)
-        except (ValueError, TypeError, ET.ParseError, json.JSONDecodeError, csv.Error, ImportError):
-            continue
         except Exception:
-            # Third-party parsers (notably YAML) use their own exception hierarchy.
             continue
-
     return Document(source, "text", stripped, text)
 
 
