@@ -3,58 +3,66 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from rich.console import Console
-from rich.json import JSON
-from rich.panel import Panel
-from rich.pretty import Pretty
-from rich.syntax import Syntax
-from rich.tree import Tree
-
 from .models import Document
-
-console = Console()
+from .terminal import paint, print_panel
 
 
 def value_label(value: Any) -> str:
     if value is None:
-        return "[bold magenta]null[/]"
+        return paint("null", "magenta", "bold")
     if isinstance(value, bool):
-        return f"[bold magenta]{str(value).lower()}[/]"
+        return paint(str(value).lower(), "magenta", "bold")
     if isinstance(value, (int, float)):
-        return f"[bold cyan]{value}[/]"
+        return paint(value, "cyan", "bold")
     if isinstance(value, str):
         preview = value if len(value) <= 100 else value[:97] + "…"
-        return f"[green]{preview!r}[/]"
-    return f"[dim]{type(value).__name__}[/]"
+        return paint(repr(preview), "green")
+    return paint(type(value).__name__, "dim")
 
 
-def add_tree(parent: Tree, value: Any) -> None:
+def _tree_lines(value: Any, prefix: str = "", label: str = "document") -> list[str]:
+    lines: list[str] = []
     if isinstance(value, dict):
-        for key, child in value.items():
-            branch = parent.add(f"[bold blue]{key}[/] {value_label(child) if not isinstance(child, (dict, list)) else ''}")
+        lines.append(f"{prefix}{paint(label, 'blue', 'bold')} {paint('{' + str(len(value)) + ' keys}', 'dim')}")
+        items = list(value.items())
+        for index, (key, child) in enumerate(items):
+            connector = "└─" if index == len(items) - 1 else "├─"
+            next_prefix = prefix + ("  " if index == len(items) - 1 else "│ ")
             if isinstance(child, (dict, list)):
-                add_tree(branch, child)
-    elif isinstance(value, list):
+                nested = _tree_lines(child, next_prefix, str(key))
+                first = nested.pop(0)
+                lines.append(f"{prefix}{connector} {first[len(next_prefix):]}")
+                lines.extend(nested)
+            else:
+                lines.append(f"{prefix}{connector} {paint(key, 'blue', 'bold')}: {value_label(child)}")
+        return lines
+    if isinstance(value, list):
+        lines.append(f"{prefix}{paint(label, 'yellow', 'bold')} {paint('[' + str(len(value)) + ' items]', 'dim')}")
         for index, child in enumerate(value):
-            branch = parent.add(f"[yellow][{index}][/] {value_label(child) if not isinstance(child, (dict, list)) else ''}")
+            connector = "└─" if index == len(value) - 1 else "├─"
+            next_prefix = prefix + ("  " if index == len(value) - 1 else "│ ")
             if isinstance(child, (dict, list)):
-                add_tree(branch, child)
+                nested = _tree_lines(child, next_prefix, f"[{index}]")
+                first = nested.pop(0)
+                lines.append(f"{prefix}{connector} {first[len(next_prefix):]}")
+                lines.extend(nested)
+            else:
+                lines.append(f"{prefix}{connector} {paint('[' + str(index) + ']', 'yellow')}: {value_label(child)}")
+        return lines
+    return [f"{prefix}{label}: {value_label(value)}"]
 
 
 def render_document(document: Document) -> None:
     title = f"✨ Magic Sorter X · {document.kind.upper()}"
     if document.source:
         title += f" · {document.source.name}"
-
     if document.kind == "text":
-        body = Syntax(str(document.data), "text", line_numbers=True, word_wrap=True)
+        body = "\n".join(f"{index:>4} │ {line}" for index, line in enumerate(str(document.data).splitlines(), 1))
     elif document.kind == "json":
-        body = JSON(json.dumps(document.data, ensure_ascii=False))
+        body = json.dumps(document.data, ensure_ascii=False, indent=2)
     else:
-        tree = Tree("[bold]🌳 document[/]")
-        add_tree(tree, document.data)
-        body = tree
-    console.print(Panel(body, title=title, border_style="bright_blue", expand=False))
+        body = "\n".join(_tree_lines(document.data))
+    print_panel(body, title)
 
 
 def render_summary(document: Document) -> None:
@@ -65,4 +73,4 @@ def render_summary(document: Document) -> None:
         stats = {"type": document.kind, "items": len(value)}
     else:
         stats = {"type": document.kind, "characters": len(str(value))}
-    console.print(Panel(Pretty(stats), title="📊 Summary", border_style="green"))
+    print_panel(json.dumps(stats, indent=2), "📊 Summary")
