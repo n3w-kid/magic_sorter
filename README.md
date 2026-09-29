@@ -1,6 +1,6 @@
 # ✨ Magic Sorter X
 
-Magic Sorter X is a terminal tool for viewing structured data, translating text to English, adding type-aware emoji to filenames, and organizing folders safely.
+Magic Sorter X is a terminal tool for viewing structured data, translating text to English, editing text stored in Godot GDScript files, adding type-aware emoji to filenames, and organizing folders safely.
 
 This edition adds a guided wizard and runs directly from the project folder. No package setup step is required.
 
@@ -42,7 +42,14 @@ python msx.py
 
 Running the program with no command opens the wizard automatically.
 
-You can also open it explicitly:
+### Thonny
+
+1. Open `msx.py` in Thonny.
+2. Choose **Run > Run current script** (or press F5).
+3. The Magic Sorter X wizard opens in the Thonny Shell.
+4. Choose **Godot text/game tools** for the `.gd` workflow.
+
+You can also open the wizard explicitly:
 
 ```text
 python msx.py wizard
@@ -55,10 +62,13 @@ The wizard puts all main actions in one menu:
 
 1. View a file
 2. Translate a file to English
-3. Add emoji to filenames
-4. Organize a folder
-5. Run system checks
-6. Exit
+3. Godot text/game tools
+4. Add emoji to filenames
+5. Organize a folder
+6. Run system checks
+7. Exit
+
+The Godot submenu can extract editable text from a `.gd` file, merge edited text back into a new `.gd` file, list/recover scripts from a Godot package, and patch an edited script into a new package.
 
 Each action asks only for the options it needs. Rename and organize actions still default to a safe preview unless you choose to apply the changes.
 
@@ -136,6 +146,70 @@ LIBRETRANSLATE_API_KEY=optional-key
 
 On macOS or Linux these can be exported in the shell. On Windows they can be set as normal environment variables.
 
+## Godot `.gd` text workflow
+
+The built-in Godot text tools use only Python's standard library. They are designed for files where dialogue or other text is stored in string assignments such as:
+
+```gdscript
+var Greeting = "Hello\nWorld"
+const Description: String = "Some text"
+```
+
+### Step 1: extract text
+
+Wizard: **Godot text/game tools > Extract text from a .gd file**
+
+Command mode:
+
+```text
+python msx.py godot-export questtext.gd
+```
+
+The default output is `questtext.msx.txt`. Each editable line begins with `|`; keep the `@@MSX` marker lines unchanged.
+
+### Step 2: edit the text file
+
+Open the generated `.msx.txt` file in your preferred editor. Keep the first `|` on each text line. GDScript escaping, quotes, BBCode tags, placeholders such as `$name`, and the rest of the source file are handled by the importer.
+
+### Step 3: merge the text back
+
+Wizard: **Godot text/game tools > Paste edited text back into a new .gd file**
+
+Command mode:
+
+```text
+python msx.py godot-import questtext.gd questtext.msx.txt
+```
+
+The default output is `questtext_patched.gd`. The original `.gd` is not overwritten. If the editable file has no changes, the round-trip output preserves the original source bytes, including its line endings.
+
+## Godot PCK/EXE/APK recovery and patching
+
+Released Godot games often store resources in a `.pck` file or embed the pack in the executable. Magic Sorter X can call **GDRE Tools** for package-level work; GDRE Tools is not bundled with this project.
+
+Place `gdre_tools.exe` next to `msx.py`, put it in a `tools` subfolder, add it to `PATH`, set the `GDRE_TOOLS` environment variable, or provide the path when the wizard asks for it.
+
+Useful commands:
+
+```text
+python msx.py godot-list game.pck
+python msx.py godot-recover game.pck
+python msx.py godot-recover game.pck --include "res://**/questtext.gdc"
+python msx.py godot-patch game.pck questtext_patched.gd --dest "res://scripts/questtext.gd"
+```
+
+If the original package contains a compiled `.gdc` script, patch the original `.gdc` resource path. Magic Sorter X can ask GDRE Tools to compile an edited `.gd` first when `--bytecode` is supplied, for example:
+
+```text
+python msx.py godot-patch game.pck questtext_patched.gd \
+  --dest "res://scripts/questtext.gdc" \
+  --bytecode 3.5.3
+```
+
+Use the engine/bytecode version reported by the recovery tool. Package patching always writes to a new output file instead of overwriting the original game/package.
+
+Only modify projects or game files you are authorized to modify.
+
 ## Emoji filenames
 
 Magic Sorter X recognizes many common extensions and prefixes files with matching emoji, including data, documents, source code, images, audio, video, and archives.
@@ -169,6 +243,7 @@ magic_sorter/
 │       ├── __init__.py
 │       ├── cli.py
 │       ├── emojify.py
+│       ├── godot_text.py
 │       ├── models.py
 │       ├── organize.py
 │       ├── parsers.py

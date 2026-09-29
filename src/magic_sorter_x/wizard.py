@@ -87,6 +87,79 @@ def _run_translate(handler: Handler) -> int:
     return handler(argparse.Namespace(path=path, backend=backend, keys=translate_keys, output=output))
 
 
+def _run_godot_export(handler: Handler) -> int:
+    path = _required_text("Original .gd file")
+    output = _text("Editable text output, or leave blank for automatic name") or None
+    overwrite = _yes_no("Overwrite the editable text file if it already exists?", False)
+    return handler(argparse.Namespace(path=path, output=output, overwrite=overwrite))
+
+
+def _run_godot_import(handler: Handler) -> int:
+    path = _required_text("Original .gd file")
+    edited = _required_text("Edited .msx.txt file")
+    output = _text("Patched .gd output, or leave blank for automatic name") or None
+    overwrite = _yes_no("Overwrite the patched output if it already exists?", False)
+    return handler(argparse.Namespace(path=path, edited=edited, output=output, overwrite=overwrite))
+
+
+def _run_godot_list(handler: Handler) -> int:
+    game = _required_text("Godot game package (.pck/.exe/.apk)")
+    gdre = _text("Path to gdre_tools.exe, or leave blank for auto-detect") or None
+    return handler(argparse.Namespace(game=game, gdre=gdre))
+
+
+def _run_godot_recover(handler: Handler) -> int:
+    game = _required_text("Godot game package (.pck/.exe/.apk)")
+    output = _text("Recovery folder, or leave blank for automatic name") or None
+    include = _text("Optional include glob (example: res://**/questtext.gdc)") or None
+    gdre = _text("Path to gdre_tools.exe, or leave blank for auto-detect") or None
+    return handler(argparse.Namespace(game=game, output=output, include=include, gdre=gdre))
+
+
+def _run_godot_patch(handler: Handler) -> int:
+    game = _required_text("Original Godot .pck or .exe")
+    source = _required_text("Edited .gd or compiled .gdc file")
+    dest = _required_text("Exact resource destination (example: res://scripts/questtext.gd)")
+    output = _text("Patched output, or leave blank for automatic name") or None
+    bytecode = _text("Godot/bytecode version if compiling .gd to .gdc; otherwise leave blank") or None
+    gdre = _text("Path to gdre_tools.exe, or leave blank for auto-detect") or None
+    return handler(
+        argparse.Namespace(
+            game=game,
+            source=source,
+            dest=dest,
+            output=output,
+            bytecode=bytecode,
+            gdre=gdre,
+        )
+    )
+
+
+def _run_godot_menu(handlers: dict[str, Handler]) -> int | None:
+    selected = _choice(
+        "Godot text/game tools",
+        [
+            "Extract text from a .gd file",
+            "Paste edited text back into a new .gd file",
+            "List files inside a game PCK/EXE/APK (GDRE Tools)",
+            "Recover/decompile scripts from a game package (GDRE Tools)",
+            "Patch an edited script into a new PCK/EXE (GDRE Tools)",
+            "Back",
+        ],
+    )
+    if selected == 1:
+        return _run_godot_export(handlers["godot_export"])
+    if selected == 2:
+        return _run_godot_import(handlers["godot_import"])
+    if selected == 3:
+        return _run_godot_list(handlers["godot_list"])
+    if selected == 4:
+        return _run_godot_recover(handlers["godot_recover"])
+    if selected == 5:
+        return _run_godot_patch(handlers["godot_patch"])
+    return None
+
+
 def _run_emojify(handler: Handler) -> int:
     paths = _paths("Files or folders, separated by spaces")
     recursive = _yes_no("Include files inside subfolders?", False)
@@ -104,15 +177,18 @@ def _run_organize(handler: Handler) -> int:
 
 def run_wizard(handlers: dict[str, Handler]) -> int:
     print_panel(
-        "View structured files, translate text, rename files with emoji, organize folders, and run diagnostics.",
+        "View structured files, translate text, edit Godot dialogue, rename files with emoji, "
+        "organize folders, and run diagnostics.",
         "✨ Magic Sorter X Wizard",
     )
+    code = 0
     while True:
         selected = _choice(
             "What do you want to do?",
             [
                 "View a file",
                 "Translate a file to English",
+                "Godot text/game tools",
                 "Add emoji to filenames",
                 "Organize a folder",
                 "Run system checks",
@@ -125,10 +201,15 @@ def run_wizard(handlers: dict[str, Handler]) -> int:
             elif selected == 2:
                 code = _run_translate(handlers["translate"])
             elif selected == 3:
-                code = _run_emojify(handlers["emojify"])
+                godot_code = _run_godot_menu(handlers)
+                if godot_code is None:
+                    continue
+                code = godot_code
             elif selected == 4:
-                code = _run_organize(handlers["organize"])
+                code = _run_emojify(handlers["emojify"])
             elif selected == 5:
+                code = _run_organize(handlers["organize"])
+            elif selected == 6:
                 code = handlers["doctor"](argparse.Namespace())
             else:
                 print("Goodbye.")

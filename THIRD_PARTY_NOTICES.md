@@ -7,3 +7,4 @@ Magic Sorter X is a clean-room implementation informed by public documentation a
 - `soimort/translate-shell` — Unlicense project; optional external executable integration through `trans`.
 
 No source files from those projects are bundled in this project.
+- `GDRETools/gdsdecomp` (Godot RE Tools) — optional external executable integration for listing, recovering/decompiling, compiling, and patching Godot packages. It is not bundled with Magic Sorter X.
